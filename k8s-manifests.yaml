@@ -1,0 +1,80 @@
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: k8schedul8r
+  namespace: default
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: k8schedul8r
+rules:
+- apiGroups: ["apps"]
+  resources: ["deployments", "statefulsets"]
+  verbs: ["get", "list", "watch", "update", "patch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: k8schedul8r
+subjects:
+- kind: ServiceAccount
+  name: k8schedul8r
+  namespace: default
+roleRef:
+  kind: ClusterRole
+  name: k8schedul8r
+  apiGroup: rbac.authorization.k8s.io
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: k8schedul8r-config
+  namespace: default
+data:
+  config.yaml: |
+    version: "1"
+    resources:
+      - name: hello-app
+        namespace: default
+        target:
+          name: hello-app
+          kind: Deployment
+          apiVersion: apps/v1
+        originalReplicas: 2
+        windows:
+          - startTime: 1740261000  # A bit in the future
+            endTime: 1740261123    # Start + 1 hour
+            replicas: 4
+          - startTime: 1740261123  # Previous end
+            endTime: 1740268200    # Previous end + 1 hour
+            replicas: 1
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: k8schedul8r
+  namespace: default
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: k8schedul8r
+  template:
+    metadata:
+      labels:
+        app: k8schedul8r
+    spec:
+      serviceAccountName: k8schedul8r
+      containers:
+      - name: k8schedul8r
+        image: k8schedul8r:latest
+        imagePullPolicy: Never
+        volumeMounts:
+        - name: config
+          mountPath: /etc/k8schedul8r
+      volumes:
+      - name: config
+        configMap:
+          name: k8schedul8r-config 

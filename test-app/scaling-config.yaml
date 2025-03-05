@@ -1,0 +1,13 @@
+version: "1"
+resources:
+  - name: hello-app
+    namespace: default
+    type: Deployment
+    originalReplicas: 2
+    windows:
+      - start: 1710345600  # Current time
+        end: 1710349200    # Current time + 1 hour
+        replicas: 4
+      - start: 1710349200  # Previous end time
+        end: 1710352800    # Previous end time + 1 hour
+        replicas: 1 

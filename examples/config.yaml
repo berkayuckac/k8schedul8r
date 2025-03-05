@@ -1,0 +1,13 @@
+version: "1"
+resources:
+  - name: my-app-scaler
+    namespace: default
+    target:
+      name: my-app
+      kind: Deployment
+      apiVersion: apps/v1
+    originalReplicas: 2
+    windows:
+      - startTime: 1708675200
+        endTime: 1708678800
+        replicas: 5 

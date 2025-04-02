@@ -1,0 +1,15 @@
+apiVersion: k8schedul8r.io/v1alpha1
+kind: ScheduledResource
+metadata:
+  name: hello-app-schedule
+  namespace: default
+spec:
+  target:
+    name: hello-app
+    kind: Deployment
+    apiVersion: apps/v1
+  originalReplicas: 2
+  windows:
+    - startTime: 1743542601
+      endTime: 1743542661
+      replicas: 6

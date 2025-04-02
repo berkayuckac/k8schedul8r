@@ -148,7 +148,7 @@ func (s *Scheduler) checkAndScale(ctx context.Context) error {
 		desiredReplicas := res.GetDesiredReplicas(now)
 		s.logger.Printf("Resource %s/%s: desired replicas: %d", res.Namespace, res.Name, desiredReplicas)
 
-		if err := s.scaleResource(ctx, &res, desiredReplicas); err != nil {
+		if err := s.ScaleResource(ctx, &res, desiredReplicas); err != nil {
 			s.logger.Printf("Failed to scale %s/%s: %v", res.Namespace, res.Name, err)
 			continue
 		}
@@ -160,8 +160,8 @@ func (s *Scheduler) checkAndScale(ctx context.Context) error {
 	return nil
 }
 
-// scaleResource scales a kubernetes resource to the desired number of replicas
-func (s *Scheduler) scaleResource(ctx context.Context, res *model.Resource, replicas int32) error {
+// ScaleResource scales a kubernetes resource to the desired number of replicas
+func (s *Scheduler) ScaleResource(ctx context.Context, res *model.Resource, replicas int32) error {
 	switch res.Target.Kind {
 	case "Deployment":
 		return s.scaleDeployment(ctx, res.Target.Name, res.Namespace, replicas)

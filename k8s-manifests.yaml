@@ -11,8 +11,17 @@ metadata:
   name: k8schedul8r
 rules:
 - apiGroups: ["apps"]
-  resources: ["deployments", "statefulsets"]
+  resources: ["deployments", "statefulsets", "deployments/scale", "statefulsets/scale"]
   verbs: ["get", "list", "watch", "update", "patch"]
+- apiGroups: ["k8schedul8r.io"]
+  resources: ["scheduledresources"]
+  verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+- apiGroups: ["apiextensions.k8s.io"]
+  resources: ["customresourcedefinitions"]
+  verbs: ["get", "list", "watch"]
+- apiGroups: [""]
+  resources: ["events"]
+  verbs: ["create", "patch"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
@@ -26,30 +35,6 @@ roleRef:
   kind: ClusterRole
   name: k8schedul8r
   apiGroup: rbac.authorization.k8s.io
----
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: k8schedul8r-config
-  namespace: default
-data:
-  config.yaml: |
-    version: "1"
-    resources:
-      - name: hello-app
-        namespace: default
-        target:
-          name: hello-app
-          kind: Deployment
-          apiVersion: apps/v1
-        originalReplicas: 2
-        windows:
-          - startTime: 1740261000  # A bit in the future
-            endTime: 1740261123    # Start + 1 hour
-            replicas: 4
-          - startTime: 1740261123  # Previous end
-            endTime: 1740268200    # Previous end + 1 hour
-            replicas: 1
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -71,10 +56,77 @@ spec:
       - name: k8schedul8r
         image: k8schedul8r:latest
         imagePullPolicy: Never
-        volumeMounts:
-        - name: config
-          mountPath: /etc/k8schedul8r
-      volumes:
-      - name: config
-        configMap:
-          name: k8schedul8r-config 
+        command: ["/app/k8schedul8r"]
+        args:
+        - --enable-crd-provider=true
+        # Optional: Enable file-based config with:
+        # - --enable-config-file=true
+        # - --config=/path/to/config.yaml
+        # Optional: Enable remote config with:
+        # - --enable-remote-config=true
+        # - --remote-config=http://example.com/config
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: scheduledresources.k8schedul8r.io
+spec:
+  group: k8schedul8r.io
+  names:
+    kind: ScheduledResource
+    listKind: ScheduledResourceList
+    plural: scheduledresources
+    singular: scheduledresource
+    shortNames:
+      - schres
+  scope: Namespaced
+  versions:
+    - name: v1alpha1
+      served: true
+      storage: true
+      schema:
+        openAPIV3Schema:
+          type: object
+          required: ["spec"]
+          properties:
+            spec:
+              type: object
+              required: ["target", "originalReplicas", "windows"]
+              properties:
+                target:
+                  type: object
+                  required: ["name", "kind", "apiVersion"]
+                  properties:
+                    name:
+                      type: string
+                    kind:
+                      type: string
+                      enum: ["Deployment", "StatefulSet"]
+                    apiVersion:
+                      type: string
+                originalReplicas:
+                  type: integer
+                  minimum: 0
+                windows:
+                  type: array
+                  items:
+                    type: object
+                    required: ["startTime", "endTime", "replicas"]
+                    properties:
+                      startTime:
+                        type: integer
+                      endTime:
+                        type: integer
+                      replicas:
+                        type: integer
+                        minimum: 0
+      additionalPrinterColumns:
+      - name: Target
+        type: string
+        jsonPath: .spec.target.name
+      - name: Kind
+        type: string
+        jsonPath: .spec.target.kind
+      - name: Original Replicas
+        type: integer
+        jsonPath: .spec.originalReplicas 

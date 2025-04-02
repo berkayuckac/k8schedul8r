@@ -2,152 +2,204 @@
 
 K8schedul8r is a Kubernetes scheduler that manages time-based scaling of workloads. It allows you to define time windows during which your deployments or statefulsets should run with different numbers of replicas.
 
-## Features
+### Key Features
 
-- Time-based scheduling of Kubernetes workloads
-- Support for both Deployments and StatefulSets
-- Local and remote configuration options
-- Simple YAML/JSON configuration format
-- Immediate scaling with no gradual changes
-- Automatic return to original replica count outside time windows
+- Scale Kubernetes Deployments and StatefulSets based on time windows
+- Multiple configuration options:
+  - Kubernetes Custom Resources
+  - ConfigMap-based configuration
+  - Remote HTTP configuration
+- Immediate scaling (no gradual changes)
+- K8-native integration with RBAC and events
+- Leader election for high availability
 
-## Prerequisites
+## Getting Started
 
-- K8 Cluster
-- Go 1.23 or later
-- Docker
+### Prerequisites
+
+- K8s
 - kubectl
+- Go
+- Docker
 
-## Note
+### Installation
 
-- This project is still heavily under development and not ready for production use.
-
-## Quick Start
-
-1. **Build the Scheduler Image**
-
+1. Clone the repository:
 ```bash
-# Build the image
-docker build -t k8schedul8r:latest .
+git clone https://github.com/berkayuckac/k8schedul8r.git
+cd k8schedul8r
 ```
 
-2. **Deploy K8schedul8r**
-
+2. Build the controller:
 ```bash
-# Apply RBAC and scheduler deployment
-kubectl apply -f k8s-manifests.yaml
-```
-
-## Configuration
-
-K8schedul8r uses a YAML configuration file to define scaling windows. Example:
-
-```yaml
-version: "1"
-resources:
-  - name: my-app
-    namespace: default
-    target:
-      name: my-app
-      kind: Deployment
-      apiVersion: apps/v1
-    originalReplicas: 2
-    windows:
-      - startTime: 1740261000  # Unix timestamp
-        endTime: 1740264600    # Unix timestamp
-        replicas: 4
-```
-
-### Configuration Fields
-
-- `version`: Configuration version (currently "1")
-- `resources`: List of resources to manage
-  - `name`: Resource identifier
-  - `namespace`: Kubernetes namespace
-  - `target`: Resource to scale
-    - `name`: Target resource name
-    - `kind`: Resource type (Deployment/StatefulSet)
-    - `apiVersion`: API version (usually apps/v1)
-  - `originalReplicas`: Default replica count
-  - `windows`: List of scaling windows
-    - `startTime`: Window start (Unix timestamp)
-    - `endTime`: Window end (Unix timestamp)
-    - `replicas`: Desired replicas during window
-
-## Important Notes
-
-1. **Timestamps**
-   - All times are in Unix timestamp format
-   - Windows must not overlap
-   - End time must be after start time
-   - Past windows are allowed but will never be active
-
-2. **Scaling Behavior**
-   - Scaling is immediate (no gradual changes)
-   - First matching window wins if there's overlap
-   - Returns to originalReplicas when no window is active
-   - Zero replicas is a valid configuration
-
-3. **Common Pitfalls**
-   - Ensure timestamps are in the future
-   - Use correct field names (startTime/endTime, not start/end)
-   - Configure proper RBAC permissions
-
-## Development Setup
-
-1. **Local Development Environment, Such as Minikube**
-```bash
-# Start Minikube
-minikube start
-
-# Configure Docker environment
+# For Minikube
 eval $(minikube docker-env)
 
-# Build the scheduler
+# Build
 docker build -t k8schedul8r:latest .
 ```
 
-2. **Test Application Setup**
+3. Deploy to Kubernetes:
 ```bash
-# Build test app
-cd test-app
-docker build -t hello-app:latest .
-
-# Deploy test app
-kubectl apply -f k8s-deployment.yaml
-```
-
-3. **Deploy Scheduler**
-```bash
-# Apply RBAC and configuration
 kubectl apply -f k8s-manifests.yaml
 ```
+
+## Usage
+
+K8schedul8r supports three ways to configure scaling schedules:
+
+### 1. Using Custom Resources
+
+Create a `ScheduledResource` that defines when to scale your workload:
+
+```yaml
+apiVersion: k8schedul8r.io/v1alpha1
+kind: ScheduledResource
+metadata:
+  name: my-app-schedule
+  namespace: default
+spec:
+  target:
+    name: my-app
+    kind: Deployment
+    apiVersion: apps/v1
+  originalReplicas: 2  # Default replicas when no window is active
+  windows:
+    - startTime: 1743542601  # Unix timestamp
+      endTime: 1743542661    # Unix timestamp
+      replicas: 4            # Scale to 4 replicas during this window
+```
+
+Apply it:
+```bash
+kubectl apply -f my-schedule.yaml
+```
+
+### 2. Using ConfigMap
+
+Create a ConfigMap with your scaling configuration:
+
+```yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: k8schedul8r-config
+  namespace: default
+data:
+  config.yaml: |
+    version: "1"
+    resources:
+      - name: my-app
+        namespace: default
+        target:
+          name: my-app
+          kind: Deployment
+          apiVersion: apps/v1
+        originalReplicas: 2
+        windows:
+          - startTime: 1743542601
+            endTime: 1743542661
+            replicas: 4
+```
+
+Enable ConfigMap configuration in the deployment:
+```yaml
+args:
+- --enable-config-file=true
+- --config=/etc/k8schedul8r/config.yaml
+```
+
+### 3. Using Remote Configuration
+
+Point K8schedul8r to a remote HTTP endpoint:
+
+```yaml
+args:
+- --enable-remote-config=true
+- --remote-config=http://config-server/scaling-config
+```
+
+The endpoint should return configuration in the same format as the ConfigMap.
+
+## Configuration Options
+
+### Command Line Flags
+
+| Flag | Description | Default |
+|------|-------------|---------|
+| --enable-crd-provider | Use CRD-based configuration | false |
+| --enable-config-file | Use local file configuration | false |
+| --enable-remote-config | Use remote HTTP configuration | false |
+| --config | Path to config file | "" |
+| --remote-config | URL for remote config | "" |
+| --interval | Polling interval | 30s |
+| --leader-elect | Enable leader election | false |
+
+### Time Windows
+
+- Use Unix timestamps for start/end times
+- Windows must not overlap
+- First matching window takes precedence
+- Returns to originalReplicas when no window is active
 
 ## Monitoring
 
-Monitor the scheduler:
+### View Controller Logs
 ```bash
-# View scheduler logs
 kubectl logs -l app=k8schedul8r -f
+```
 
-# Check deployment status
-kubectl get deployment hello-app
+### Check Scaling Events
+```bash
+# For CRD-based configuration
+kubectl get events --field-selector involvedObject.kind=ScheduledResource
+
+# Check target deployment
+kubectl get deployment my-app
+```
+
+## Development
+
+### Local Development Setup
+
+1. Start Minikube:
+```bash
+minikube start
+```
+
+2. Build and deploy:
+```bash
+eval $(minikube docker-env)
+docker build -t k8schedul8r:latest .
+kubectl apply -f k8s-manifests.yaml
+```
+
+3. Test with example app:
+```bash
+kubectl create deployment hello-app --image=nginx:latest --replicas=2
+kubectl apply -f examples/scheduled-resource.yaml
+```
+
+### Running Tests
+```bash
+go test ./... -v
 ```
 
 ## Architecture
 
-- Runs as a single pod in your cluster
-- Uses ServiceAccount for authentication
-- Polls for configuration changes
-- Directly interacts with Kubernetes API
-
-## Future Enhancements
-
-- TBD
+- Built on controller-runtime framework
+- Event-driven reconciliation for CRDs
+- Pluggable configuration providers
+- Leader election for HA deployments
+- Kubernetes native integration (RBAC, events)
 
 ## Contributing
 
-Feel free to contribute to the project by opening issues or submitting pull requests.
+Contributions welcome! Please:
+
+1. Fork the repository
+2. Create a feature branch
+3. Submit a Pull Request
 
 ## License
 
